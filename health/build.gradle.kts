@@ -30,7 +30,6 @@ kotlin {
     val xcframeworkName = "HealthKMP"
     val xcf = XCFramework(xcframeworkName)
     listOf(
-        iosX64(),
         iosArm64(),
         iosSimulatorArm64(),
         watchosArm64(),

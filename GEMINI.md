@@ -52,13 +52,13 @@ Ensure the generated `.api` files are committed.
 Verify changes across all platforms using the following commands:
 - **Android Unit Tests:** `./gradlew :health:testAndroid`
 - **Android Mapping (Host) Tests:** `./gradlew :health:testAndroidHostTest`
-- **Apple (iOS/watchOS) Tests:** `./gradlew :health:iosX64Test` (runs on macOS host)
+- **Apple (iOS/watchOS) Tests:** `./gradlew :health:iosArm64Test` (runs on macOS host)
 - **All Tests:** `./gradlew :health:allTests`
 
 ### 7.3. Xcode Framework Assembly
 To verify that the Swift framework builds correctly and to update it for sample apps, use:
 ```bash
-./gradlew :health:linkDebugFrameworkIosX64 :health:linkDebugFrameworkWatchosArm64
+./gradlew :health:linkDebugFrameworkIosAmr64 :health:linkDebugFrameworkWatchosArm64
 ```
 
 ### 7.4. Sample App Verification

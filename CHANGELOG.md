@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/vitoksmile/HealthKMP/releases/tag/1.5.0)
+
+- Target Android SDK 37 (Android 17)
+- Kotlin 2.4.0, Compose Multiplatform 1.11.1, and Coroutines 1.11.0
+- SKIE 0.10.13, AGP 9.2.1, and general dependency updates
+- Dropped legacy `iosX64` build target
+
 ## [1.4.0](https://github.com/vitoksmile/HealthKMP/releases/tag/1.4.0)
 
 - Added **active energy burned** data type
