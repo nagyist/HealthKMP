@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/vitoksmile/HealthKMP/releases/tag/1.6.0)
+
+- Added **duration-grouped aggregation** support (`aggregateGroupByDuration`) across Health Connect and HealthKit
+- Added type-safe duration-grouped extension functions (`aggregateStepsGroupByDuration`, `aggregateWeightGroupByDuration`, etc.)
+- Added **CONTRIBUTING.md** and **Pull Request template** to standardise project contributions
+- Improved empty state handling and multi-metric statistic pairing (e.g., BloodPressure)
+
 ## [1.5.0](https://github.com/vitoksmile/HealthKMP/releases/tag/1.5.0)
 
 - Target Android SDK 37 (Android 17)
