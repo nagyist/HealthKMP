@@ -1,6 +1,7 @@
 package com.viktormykhailiv.kmp.health
 
 import com.viktormykhailiv.kmp.health.region.RegionalPreferences
+import kotlin.time.Duration
 import kotlin.time.Instant
 
 /**
@@ -100,18 +101,39 @@ interface HealthManager {
     ): Result<Unit>
 
     /**
-     * Aggregates health data of the specified type within the given time range.
+     * Calculates aggregation for [HealthDataType] within the specified time range.
      *
      * @param startTime The start time of the range (inclusive).
      * @param endTime The end time of the range (exclusive).
      * @param type The [HealthDataType] to aggregate.
-     * @return A [Result] containing a [HealthAggregatedRecord].
+     * @return A [Result] containing a single [HealthAggregatedRecord] for the entire time range.
      */
     suspend fun aggregate(
         startTime: Instant,
         endTime: Instant,
         type: HealthDataType,
     ): Result<HealthAggregatedRecord>
+
+    /**
+     * Calculates aggregation for [HealthDataType] within the specified time range,
+     * grouped into equal-duration slices.
+     *
+     * Note: On Android (Health Connect), metrics that require custom aggregation (such as
+     * [BloodGlucose], [BodyFat], [BodyTemperature], and [LeanBodyMass]) do not support native
+     * duration slicing and will return a single aggregate record spanning [startTime, endTime).
+     *
+     * @param startTime The start time of the range (inclusive).
+     * @param endTime The end time of the range (exclusive).
+     * @param sliceWidth The duration of each time slice (bucket) within [startTime, endTime).
+     * @param type The [HealthDataType] to aggregate.
+     * @return A [Result] containing a list of [HealthAggregatedRecord]s for each time slice.
+     */
+    suspend fun aggregateGroupByDuration(
+        startTime: Instant,
+        endTime: Instant,
+        sliceWidth: Duration,
+        type: HealthDataType,
+    ): Result<List<HealthAggregatedRecord>>
 
     /**
      * Retrieves the user's regional preferences (e.g., units).

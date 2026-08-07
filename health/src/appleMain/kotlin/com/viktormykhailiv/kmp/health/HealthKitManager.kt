@@ -29,6 +29,7 @@ import platform.HealthKit.HKSampleQuery
 import platform.HealthKit.HKSampleSortIdentifierEndDate
 import platform.HealthKit.HKSampleType
 import platform.HealthKit.HKStatistics
+import platform.HealthKit.HKStatisticsCollectionQuery
 import platform.HealthKit.HKStatisticsOptions
 import platform.HealthKit.HKStatisticsQuery
 import platform.HealthKit.HKUnit
@@ -42,6 +43,8 @@ import platform.HealthKit.preferredUnitsForQuantityTypes
 import kotlin.collections.map
 import kotlin.collections.orEmpty
 import kotlin.coroutines.resumeWithException
+import kotlin.map
+import kotlin.time.Duration
 
 /**
  * Apple implementation of [HealthManager] using HealthKit.
@@ -210,6 +213,46 @@ internal class HealthKitManager : HealthManager {
                 }
             }
     }
+
+    override suspend fun aggregateGroupByDuration(
+        startTime: Instant,
+        endTime: Instant,
+        sliceWidth: Duration,
+        type: HealthDataType,
+    ): Result<List<HealthAggregatedRecord>> =
+        if (type == Sleep) {
+            // Sleep is not supported for aggregation, aggregate manually
+            readSleep(startTime = startTime, endTime = endTime)
+                .mapCatching { listOf(it.aggregate(startTime = startTime, endTime = endTime)) }
+        } else {
+            val temperaturePreference = suspend { getTemperaturePreference() }
+
+            runCatching { type.toHKQuantityType() }
+                .map { quantityTypes ->
+                    quantityTypes.flatMap { quantityType ->
+                        if (quantityType != null) {
+                            aggregateGroupByDuration(
+                                startTime = startTime,
+                                endTime = endTime,
+                                sliceWidth = sliceWidth,
+                                quantityType = quantityType,
+                                options = type.toHKStatisticOptions(),
+                            ).getOrDefault(emptyList())
+                        } else {
+                            emptyList()
+                        }
+                    }
+                }
+                .mapCatching { statisticsList ->
+                    statisticsList
+                        .groupBy { it.startDate }
+                        .values
+                        .mapNotNull { sliceStatistics ->
+                            sliceStatistics.toHealthAggregatedRecord(temperaturePreference)
+                        }
+                }
+        }
+
 
     override suspend fun getRegionalPreferences(): Result<RegionalPreferences> = runCatching {
         RegionalPreferences(
@@ -426,6 +469,48 @@ internal class HealthKitManager : HealthManager {
                     continuation.resume(Result.success(result))
                 }
             }
+        }
+
+        healthStore.executeQuery(query)
+    }
+
+    /**
+     * Gets the aggregate data in the range ```[startTime, endTime)```, which is
+     * divided into equal width slices of length ```sliceWidth```.
+     */
+    private suspend fun aggregateGroupByDuration(
+        startTime: Instant,
+        endTime: Instant,
+        sliceWidth: Duration,
+        quantityType: HKQuantityType,
+        options: HKStatisticsOptions,
+    ): Result<List<HKStatistics>> = suspendCancellableCoroutine { continuation ->
+        val query = HKStatisticsCollectionQuery(
+            quantityType = quantityType,
+            quantitySamplePredicate = HKQuery.predicateForSamplesWithStartDate(
+                startDate = startTime.toNSDate(),
+                endDate = endTime.toNSDate(),
+                options = HKQueryOptionStrictStartDate,
+            ),
+            options = options,
+            anchorDate = startTime.toNSDate(),
+            intervalComponents = sliceWidth.toNSDateComponents(),
+        )
+
+        query.setInitialResultsHandler { _, data, error ->
+            val result = when {
+                continuation.isCancelled -> return@setInitialResultsHandler
+
+                error != null -> Result.failure(Throwable(error.toString()))
+
+                data == null -> Result.failure(Throwable("$quantityType data not found"))
+
+                else -> runCatching {
+                    @Suppress("UNCHECKED_CAST")
+                    data.statistics() as List<HKStatistics>
+                }
+            }
+            continuation.resume(result)
         }
 
         healthStore.executeQuery(query)

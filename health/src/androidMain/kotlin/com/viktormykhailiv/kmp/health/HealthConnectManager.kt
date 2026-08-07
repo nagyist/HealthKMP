@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.ext.SdkExtensions
 import androidx.core.text.util.LocalePreferences
 import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.request.AggregateGroupByDurationRequest
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -16,8 +17,11 @@ import com.viktormykhailiv.kmp.health.HealthDataType.LeanBodyMass
 import com.viktormykhailiv.kmp.health.region.RegionalPreferences
 import com.viktormykhailiv.kmp.health.region.TemperatureRegionalPreference
 import kotlinx.coroutines.CancellationException
+import kotlin.time.Duration
 import kotlin.time.Instant
+import kotlin.time.toJavaDuration
 import kotlin.time.toJavaInstant
+import kotlin.time.toKotlinInstant
 
 /**
  * Android implementation of [HealthManager] using Health Connect.
@@ -135,40 +139,82 @@ class HealthConnectManager(
         endTime: Instant,
         type: HealthDataType,
     ): Result<HealthAggregatedRecord> = runCatching {
-        when (type) {
-            BloodGlucose -> {
-                aggregateBloodGlucose(startTime = startTime, endTime = endTime)
-            }
+        if (type.isCustomAggregate) {
+            return@runCatching aggregateCustom(
+                startTime = startTime,
+                endTime = endTime,
+                type = type,
+            )
+        }
 
-            BodyFat -> {
-                aggregateBodyFat(startTime = startTime, endTime = endTime)
-            }
+        val request = AggregateRequest(
+            metrics = type.toAggregateMetrics(),
+            timeRangeFilter = TimeRangeFilter.between(
+                startTime = startTime.toJavaInstant(),
+                endTime = endTime.toJavaInstant(),
+            ),
+        )
+        val response = healthConnectClient.aggregate(request)
 
-            BodyTemperature -> {
-                aggregateBodyTemperature(startTime = startTime, endTime = endTime)
-            }
+        response.toHealthAggregatedRecord(
+            startTime = startTime,
+            endTime = endTime,
+            type = type,
+        )
+    }
 
-            LeanBodyMass -> {
-                aggregateLeanBodyMass(startTime = startTime, endTime = endTime)
-            }
-
-            else -> {
-                val request = AggregateRequest(
-                    metrics = type.toAggregateMetrics(),
-                    timeRangeFilter = TimeRangeFilter.between(
-                        startTime = startTime.toJavaInstant(),
-                        endTime = endTime.toJavaInstant(),
-                    ),
-                )
-                val response = healthConnectClient.aggregate(request)
-
-                response.toHealthAggregatedRecord(
+    /**
+     * Aggregates data by duration. For types requiring custom aggregation (e.g., [BloodGlucose],
+     * [BodyFat], [BodyTemperature], [LeanBodyMass]), Health Connect does not support native
+     * duration grouping. Thus, a single aggregate record spanning [startTime, endTime) is returned.
+     */
+    override suspend fun aggregateGroupByDuration(
+        startTime: Instant,
+        endTime: Instant,
+        sliceWidth: Duration,
+        type: HealthDataType,
+    ): Result<List<HealthAggregatedRecord>> = runCatching {
+        if (type.isCustomAggregate) {
+            return@runCatching listOf(
+                aggregate(
                     startTime = startTime,
                     endTime = endTime,
                     type = type,
-                )
-            }
+                ).getOrThrow()
+            )
         }
+
+        val request = AggregateGroupByDurationRequest(
+            metrics = type.toAggregateMetrics(),
+            timeRangeFilter = TimeRangeFilter.between(
+                startTime = startTime.toJavaInstant(),
+                endTime = endTime.toJavaInstant(),
+            ),
+            timeRangeSlicer = sliceWidth.toJavaDuration(),
+        )
+
+        healthConnectClient.aggregateGroupByDuration(request)
+            .map { response ->
+                response
+                    .result
+                    .toHealthAggregatedRecord(
+                        startTime = response.startTime.toKotlinInstant(),
+                        endTime = response.endTime.toKotlinInstant(),
+                        type = type,
+                    )
+            }
+    }
+
+    private suspend fun aggregateCustom(
+        startTime: Instant,
+        endTime: Instant,
+        type: HealthDataType,
+    ): HealthAggregatedRecord = when (type) {
+        BloodGlucose -> aggregateBloodGlucose(startTime = startTime, endTime = endTime)
+        BodyFat -> aggregateBodyFat(startTime = startTime, endTime = endTime)
+        BodyTemperature -> aggregateBodyTemperature(startTime = startTime, endTime = endTime)
+        LeanBodyMass -> aggregateLeanBodyMass(startTime = startTime, endTime = endTime)
+        else -> throw IllegalArgumentException("Unsupported custom aggregate type: $type")
     }
 
     override suspend fun getRegionalPreferences(): Result<RegionalPreferences> = runCatching {
